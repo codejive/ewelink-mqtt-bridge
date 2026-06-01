@@ -130,3 +130,7 @@ Publish behavior:
 - If websocket connectivity drops, the bridge can exit and rely on container restart policy.
 - MQTT retained messages are convenient for Home Assistant and similar consumers, but can be disabled with `MQTT_RETAIN=false`.
 - If your broker requires TLS, use an `mqtts://` URL and ensure trust/cert settings are provided by your runtime environment.
+
+## License
+
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
