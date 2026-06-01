@@ -38,6 +38,7 @@ const config = {
   publishRawState: getBooleanEnv('PUBLISH_RAW_STATE', true),
   mqttRetain: getBooleanEnv('MQTT_RETAIN', true),
   mqttQos: Number(getEnv('MQTT_QOS', '1')),
+  websocketHeartbeatMs: Number(getEnv('WEBSOCKET_HEARTBEAT_MS', '25000')),
   exitOnWsClose: getBooleanEnv('EXIT_ON_WEBSOCKET_CLOSE', true)
 };
 
@@ -125,7 +126,7 @@ async function startBridge() {
     }
 
     console.log(`Published ${entries.length}${config.publishRawState ? ' + raw' : ''} topics for device ${deviceId}`);
-  });
+  }, { heartbeat: config.websocketHeartbeatMs });
 
   websocket.onOpen.addListener(() => {
     console.log('eWeLink websocket opened and listening for updates');
