@@ -127,15 +127,19 @@ async function startBridge() {
     console.log(`Published ${entries.length}${config.publishRawState ? ' + raw' : ''} topics for device ${deviceId}`);
   });
 
-  websocket.on('error', (err) => {
-    console.error('eWeLink websocket error:', err.message || err);
+  websocket.onOpen.addListener(() => {
+    console.log('eWeLink websocket opened and listening for updates');
   });
 
-  websocket.on('close', () => {
-    console.error('eWeLink websocket closed');
+  websocket.onClose.addListener((event) => {
+    console.error('eWeLink websocket closed:', event && event.reason ? event.reason : 'no reason provided');
     if (!shuttingDown && config.exitOnWsClose) {
       process.exit(1);
     }
+  });
+
+  websocket.onError.addListener((event) => {
+    console.error('eWeLink websocket error:', event && event.message ? event.message : event);
   });
 
   console.log('Bridge is running. Waiting for device updates...');
