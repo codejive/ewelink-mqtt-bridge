@@ -1,0 +1,8 @@
+services:
+  ewelink-mqtt-bridge:
+    image: codejive/ewelink-mqtt-bridge:latest
+    container_name: ewelink-mqtt-bridge
+    restart: unless-stopped
+    env_file:
+      - .env
+    network_mode: host
