@@ -6,7 +6,7 @@ This is useful when your eWeLink devices can't connect directly to your MQTT bro
 
 ## How It Works
 
-1. Authenticate to eWeLink cloud using account credentials.
+1. Authenticate to eWeLink cloud using app credentials and account credentials.
 2. Open a persistent websocket to receive live device update events.
 3. Publish each update to MQTT topics using a predictable topic structure.
 
@@ -33,11 +33,12 @@ The bridge is configured only through environment variables.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `EWELINK_EMAIL` | Yes | - | eWeLink account email used for cloud login. |
+| `EWELINK_ACCOUNT` | Yes | - | eWeLink account identifier (email or phone number). |
 | `EWELINK_PASSWORD` | Yes | - | eWeLink account password used for cloud login. |
+| `EWELINK_APP_ID` | Yes | - | eWeLink developer app ID used for API authentication. |
+| `EWELINK_APP_SECRET` | Yes | - | eWeLink developer app secret used for API authentication. |
 | `EWELINK_REGION` | No | `us` | eWeLink region for your account. Valid values: `us`, `eu`, `cn`, `as`. |
-| `EWELINK_APP_ID` | No | - | Custom eWeLink app ID. If not provided, uses default (which may fail if unauthorized). See [Getting App Credentials](#getting-app-credentials). |
-| `EWELINK_APP_SECRET` | No | - | Custom eWeLink app secret. Required if `EWELINK_APP_ID` is provided. |
+| `EWELINK_AREA_CODE` | No | `+1` | Area code used during login (required by eWeLink login API). |
 | `MQTT_URL` | No | `mqtt://127.0.0.1:1883` | MQTT broker URL. Examples: `mqtt://broker:1883`, `mqtts://broker:8883`. |
 | `MQTT_USER` | No | empty | Username for MQTT authentication. |
 | `MQTT_PASS` | No | empty | Password for MQTT authentication. |
@@ -51,7 +52,7 @@ Boolean variables (`PUBLISH_RAW_STATE`, `MQTT_RETAIN`, `EXIT_ON_WEBSOCKET_CLOSE`
 
 ## Getting App Credentials
 
-The default eWeLink app credentials in the library are no longer authorized. To use this bridge, you need to obtain your own app credentials:
+This bridge requires your own eWeLink app credentials:
 
 1. **Register an eWeLink Developer Account**
    - Visit [eWeLink Developer Platform](https://dev.ewelink.io/)
@@ -64,9 +65,9 @@ The default eWeLink app credentials in the library are no longer authorized. To 
 
 3. **Configure the Bridge**
    - Add `EWELINK_APP_ID` and `EWELINK_APP_SECRET` to your `.env` file or pass them as environment variables
-   - Both values must be provided together for custom credentials to be used
+   - Set `EWELINK_ACCOUNT` to your eWeLink email or phone number
 
-If you're unable to obtain credentials, check the [eWeLink API documentation](https://github.com/skydiver/ewelink-api) or the [eWeLink community forums](https://www.ewelink.cc/).
+If you're unable to obtain credentials, check the [eWeLink API Next documentation](https://www.npmjs.com/package/ewelink-api-next) or the [eWeLink community forums](https://www.ewelink.cc/).
 
 ## Quick Start (Node.js)
 
@@ -76,12 +77,15 @@ If you're unable to obtain credentials, check the [eWeLink API documentation](ht
 npm install
 ```
 
-2. Run with required variables:
+1. Run with required variables:
 
 ```bash
-EWELINK_EMAIL="you@example.com" \
+EWELINK_ACCOUNT="you@example.com" \
 EWELINK_PASSWORD="your-password" \
 EWELINK_REGION="eu" \
+EWELINK_AREA_CODE="+1" \
+EWELINK_APP_ID="your-app-id" \
+EWELINK_APP_SECRET="your-app-secret" \
 MQTT_URL="mqtt://127.0.0.1:1883" \
 node bridge.js
 ```
@@ -100,9 +104,12 @@ Run container:
 docker run -d \
   --name ewelink-mqtt-bridge \
   --restart unless-stopped \
-  -e EWELINK_EMAIL="you@example.com" \
+  -e EWELINK_ACCOUNT="you@example.com" \
   -e EWELINK_PASSWORD="your-password" \
   -e EWELINK_REGION="eu" \
+  -e EWELINK_AREA_CODE="+1" \
+  -e EWELINK_APP_ID="your-app-id" \
+  -e EWELINK_APP_SECRET="your-app-secret" \
   -e MQTT_URL="mqtt://broker:1883" \
   -e MQTT_USER="mqtt-user" \
   -e MQTT_PASS="mqtt-pass" \

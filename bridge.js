@@ -1,6 +1,6 @@
 'use strict';
 
-const Ewelink = require('ewelink-api');
+const Ewelink = require('ewelink-api-next').default;
 const mqtt = require('mqtt');
 
 function getEnv(name, fallback) {
@@ -28,9 +28,10 @@ function toPayload(value) {
 }
 
 const config = {
-  ewelinkEmail: getEnv('EWELINK_EMAIL'),
+  ewelinkAccount: getEnv('EWELINK_ACCOUNT', getEnv('EWELINK_EMAIL')),
   ewelinkPassword: getEnv('EWELINK_PASSWORD'),
   ewelinkRegion: getEnv('EWELINK_REGION', 'us'),
+  ewelinkAreaCode: getEnv('EWELINK_AREA_CODE', '+1'),
   ewelinkAppId: getEnv('EWELINK_APP_ID'),
   ewelinkAppSecret: getEnv('EWELINK_APP_SECRET'),
   mqttUrl: getEnv('MQTT_URL', 'mqtt://127.0.0.1:1883'),
@@ -40,12 +41,16 @@ const config = {
   publishRawState: getBooleanEnv('PUBLISH_RAW_STATE', true),
   mqttRetain: getBooleanEnv('MQTT_RETAIN', true),
   mqttQos: Number(getEnv('MQTT_QOS', '1')),
-  websocketHeartbeatMs: Number(getEnv('WEBSOCKET_HEARTBEAT_MS', '25000')),
   exitOnWsClose: getBooleanEnv('EXIT_ON_WEBSOCKET_CLOSE', true)
 };
 
-if (!config.ewelinkEmail || !config.ewelinkPassword) {
-  console.error('EWELINK_EMAIL and EWELINK_PASSWORD are required.');
+if (!config.ewelinkAccount || !config.ewelinkPassword) {
+  console.error('EWELINK_ACCOUNT and EWELINK_PASSWORD are required.');
+  process.exit(1);
+}
+
+if (!config.ewelinkAppId || !config.ewelinkAppSecret) {
+  console.error('EWELINK_APP_ID and EWELINK_APP_SECRET are required.');
   process.exit(1);
 }
 
@@ -56,7 +61,6 @@ if (![0, 1, 2].includes(config.mqttQos)) {
 
 let websocket;
 let shuttingDown = false;
-let websocketPingTimer;
 
 const bridgeStatusTopic = `${config.topicPrefix}/bridge/status`;
 
@@ -101,84 +105,131 @@ function publishMqtt(topic, payload) {
   });
 }
 
+function parseWebsocketPayload(message) {
+  if (!message || typeof message.data === 'undefined' || message.data === null) {
+    return null;
+  }
+
+  const raw = Buffer.isBuffer(message.data) ? message.data.toString('utf8') : String(message.data);
+  if (!raw || raw[0] !== '{') {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to parse eWeLink websocket message:', err.message || err);
+    return null;
+  }
+
+  // Handshake packet includes config but no device state.
+  if (payload && payload.config) {
+    return null;
+  }
+
+  if (!payload || !payload.deviceid || !payload.params || typeof payload.params !== 'object') {
+    return null;
+  }
+
+  if (payload.action && payload.action !== 'update') {
+    return null;
+  }
+
+  return payload;
+}
+
+async function publishDeviceUpdate(action) {
+  const deviceId = sanitizeTopicLevel(action.deviceid);
+  const baseTopic = `${config.topicPrefix}/${deviceId}/state`;
+
+  if (config.publishRawState) {
+    await publishMqtt(`${baseTopic}/raw`, JSON.stringify(action.params));
+  }
+
+  const entries = Object.entries(action.params);
+  for (const [key, value] of entries) {
+    const topic = `${baseTopic}/${sanitizeTopicLevel(key)}`;
+    await publishMqtt(topic, toPayload(value));
+  }
+
+  console.log(`Published ${entries.length}${config.publishRawState ? ' + raw' : ''} topics for device ${deviceId}`);
+}
+
+async function loginWithRegionFallback(client) {
+  let region = config.ewelinkRegion;
+
+  let response = await client.user.login({
+    account: config.ewelinkAccount,
+    password: config.ewelinkPassword,
+    areaCode: config.ewelinkAreaCode,
+    lang: 'en'
+  });
+
+  if (response && response.error === 10004 && response.data && response.data.region) {
+    region = response.data.region;
+    console.log(`eWeLink account redirects to region: ${region}`);
+    client.setUrl(region);
+    response = await client.user.login({
+      account: config.ewelinkAccount,
+      password: config.ewelinkPassword,
+      areaCode: config.ewelinkAreaCode,
+      lang: 'en'
+    });
+  }
+
+  return { response, region };
+}
+
 async function startBridge() {
   console.log(`Connecting to eWeLink cloud region: ${config.ewelinkRegion}`);
 
-  const ewelinkConfig = {
-    email: config.ewelinkEmail,
-    password: config.ewelinkPassword,
+  const webApi = new Ewelink.WebAPI({
+    appId: config.ewelinkAppId,
+    appSecret: config.ewelinkAppSecret,
     region: config.ewelinkRegion
-  };
+  });
 
-  if (config.ewelinkAppId && config.ewelinkAppSecret) {
-    ewelinkConfig.APP_ID = config.ewelinkAppId;
-    ewelinkConfig.APP_SECRET = config.ewelinkAppSecret;
-  }
-
-  const ewelink = new Ewelink(ewelinkConfig);
-
-  const credentials = await ewelink.getCredentials();
-  if (!credentials || credentials.error) {
-    const message = credentials && credentials.msg ? credentials.msg : JSON.stringify(credentials || {});
+  const { response: loginResponse, region: resolvedRegion } = await loginWithRegionFallback(webApi);
+  if (!loginResponse || loginResponse.error) {
+    const message = loginResponse && loginResponse.msg ? loginResponse.msg : JSON.stringify(loginResponse || {});
     throw new Error(`Failed to authenticate with eWeLink cloud: ${message}`);
   }
 
-  websocket = await ewelink.openWebSocket(async (action) => {
-    if (!action || action.action !== 'update' || !action.deviceid || !action.params) {
-      return;
-    }
-
-    const deviceId = sanitizeTopicLevel(action.deviceid);
-    const baseTopic = `${config.topicPrefix}/${deviceId}/state`;
-
-    if (config.publishRawState) {
-      await publishMqtt(`${baseTopic}/raw`, JSON.stringify(action.params));
-    }
-
-    const entries = Object.entries(action.params);
-    for (const [key, value] of entries) {
-      const topic = `${baseTopic}/${sanitizeTopicLevel(key)}`;
-      await publishMqtt(topic, toPayload(value));
-    }
-
-    console.log(`Published ${entries.length}${config.publishRawState ? ' + raw' : ''} topics for device ${deviceId}`);
+  const wsClient = new Ewelink.Ws({
+    appId: config.ewelinkAppId,
+    appSecret: config.ewelinkAppSecret,
+    region: resolvedRegion
   });
 
-  if (websocketPingTimer) {
-    clearInterval(websocketPingTimer);
-  }
+  websocket = await wsClient.Connect.create(
+    {
+      region: resolvedRegion,
+      at: webApi.at,
+      userApiKey: webApi.userApiKey,
+      appId: config.ewelinkAppId
+    },
+    () => {
+      console.log('eWeLink websocket opened and listening for updates');
+    },
+    () => {
+      console.error('eWeLink websocket closed');
+      if (!shuttingDown && config.exitOnWsClose) {
+        process.exit(1);
+      }
+    },
+    (event) => {
+      console.error('eWeLink websocket error:', event && event.message ? event.message : event);
+    },
+    async (_ws, message) => {
+      const action = parseWebsocketPayload(message);
+      if (!action) {
+        return;
+      }
 
-  websocketPingTimer = setInterval(async () => {
-    if (!websocket || shuttingDown) {
-      return;
+      await publishDeviceUpdate(action);
     }
-
-    try {
-      await websocket.send('ping');
-    } catch (err) {
-      console.error('eWeLink websocket keepalive ping failed:', err && err.message ? err.message : err);
-    }
-  }, config.websocketHeartbeatMs);
-
-  websocket.onOpen.addListener(() => {
-    console.log('eWeLink websocket opened and listening for updates');
-  });
-
-  websocket.onClose.addListener((event) => {
-    if (websocketPingTimer) {
-      clearInterval(websocketPingTimer);
-      websocketPingTimer = undefined;
-    }
-
-    console.error('eWeLink websocket closed:', event && event.reason ? event.reason : 'no reason provided');
-    if (!shuttingDown && config.exitOnWsClose) {
-      process.exit(1);
-    }
-  });
-
-  websocket.onError.addListener((event) => {
-    console.error('eWeLink websocket error:', event && event.message ? event.message : event);
-  });
+  );
 
   console.log('Bridge is running. Waiting for device updates...');
 }
@@ -201,11 +252,6 @@ async function shutdown(signal) {
     } catch (err) {
       console.error('Failed to close websocket cleanly:', err.message || err);
     }
-  }
-
-  if (websocketPingTimer) {
-    clearInterval(websocketPingTimer);
-    websocketPingTimer = undefined;
   }
 
   mqttClient.publish(bridgeStatusTopic, 'offline', { qos: 1, retain: true }, () => {
