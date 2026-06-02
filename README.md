@@ -36,6 +36,8 @@ The bridge is configured only through environment variables.
 | `EWELINK_EMAIL` | Yes | - | eWeLink account email used for cloud login. |
 | `EWELINK_PASSWORD` | Yes | - | eWeLink account password used for cloud login. |
 | `EWELINK_REGION` | No | `us` | eWeLink region for your account. Valid values: `us`, `eu`, `cn`, `as`. |
+| `EWELINK_APP_ID` | No | - | Custom eWeLink app ID. If not provided, uses default (which may fail if unauthorized). See [Getting App Credentials](#getting-app-credentials). |
+| `EWELINK_APP_SECRET` | No | - | Custom eWeLink app secret. Required if `EWELINK_APP_ID` is provided. |
 | `MQTT_URL` | No | `mqtt://127.0.0.1:1883` | MQTT broker URL. Examples: `mqtt://broker:1883`, `mqtts://broker:8883`. |
 | `MQTT_USER` | No | empty | Username for MQTT authentication. |
 | `MQTT_PASS` | No | empty | Password for MQTT authentication. |
@@ -46,6 +48,25 @@ The bridge is configured only through environment variables.
 | `EXIT_ON_WEBSOCKET_CLOSE` | No | `true` | If `true`, process exits when eWeLink websocket closes (recommended in containers with restart policy). |
 
 Boolean variables (`PUBLISH_RAW_STATE`, `MQTT_RETAIN`, `EXIT_ON_WEBSOCKET_CLOSE`) accept: `true/false`, `1/0`, `yes/no`, `on/off`.
+
+## Getting App Credentials
+
+The default eWeLink app credentials in the library are no longer authorized. To use this bridge, you need to obtain your own app credentials:
+
+1. **Register an eWeLink Developer Account**
+   - Visit [eWeLink Developer Platform](https://dev.ewelink.io/)
+   - Create an account or log in
+
+2. **Create an Application**
+   - Navigate to the applications/credentials section
+   - Create a new application
+   - You'll receive an `APP_ID` and `APP_SECRET`
+
+3. **Configure the Bridge**
+   - Add `EWELINK_APP_ID` and `EWELINK_APP_SECRET` to your `.env` file or pass them as environment variables
+   - Both values must be provided together for custom credentials to be used
+
+If you're unable to obtain credentials, check the [eWeLink API documentation](https://github.com/skydiver/ewelink-api) or the [eWeLink community forums](https://www.ewelink.cc/).
 
 ## Quick Start (Node.js)
 

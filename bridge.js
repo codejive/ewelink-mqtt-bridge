@@ -31,6 +31,8 @@ const config = {
   ewelinkEmail: getEnv('EWELINK_EMAIL'),
   ewelinkPassword: getEnv('EWELINK_PASSWORD'),
   ewelinkRegion: getEnv('EWELINK_REGION', 'us'),
+  ewelinkAppId: getEnv('EWELINK_APP_ID'),
+  ewelinkAppSecret: getEnv('EWELINK_APP_SECRET'),
   mqttUrl: getEnv('MQTT_URL', 'mqtt://127.0.0.1:1883'),
   mqttUser: getEnv('MQTT_USER'),
   mqttPass: getEnv('MQTT_PASS'),
@@ -102,11 +104,18 @@ function publishMqtt(topic, payload) {
 async function startBridge() {
   console.log(`Connecting to eWeLink cloud region: ${config.ewelinkRegion}`);
 
-  const ewelink = new Ewelink({
+  const ewelinkConfig = {
     email: config.ewelinkEmail,
     password: config.ewelinkPassword,
     region: config.ewelinkRegion
-  });
+  };
+
+  if (config.ewelinkAppId && config.ewelinkAppSecret) {
+    ewelinkConfig.APP_ID = config.ewelinkAppId;
+    ewelinkConfig.APP_SECRET = config.ewelinkAppSecret;
+  }
+
+  const ewelink = new Ewelink(ewelinkConfig);
 
   const credentials = await ewelink.getCredentials();
   if (!credentials || credentials.error) {
