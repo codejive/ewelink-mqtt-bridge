@@ -54,6 +54,7 @@ if (![0, 1, 2].includes(config.mqttQos)) {
 
 let websocket;
 let shuttingDown = false;
+let websocketPingTimer;
 
 const bridgeStatusTopic = `${config.topicPrefix}/bridge/status`;
 
@@ -107,6 +108,12 @@ async function startBridge() {
     region: config.ewelinkRegion
   });
 
+  const credentials = await ewelink.getCredentials();
+  if (!credentials || credentials.error) {
+    const message = credentials && credentials.msg ? credentials.msg : JSON.stringify(credentials || {});
+    throw new Error(`Failed to authenticate with eWeLink cloud: ${message}`);
+  }
+
   websocket = await ewelink.openWebSocket(async (action) => {
     if (!action || action.action !== 'update' || !action.deviceid || !action.params) {
       return;
@@ -126,13 +133,34 @@ async function startBridge() {
     }
 
     console.log(`Published ${entries.length}${config.publishRawState ? ' + raw' : ''} topics for device ${deviceId}`);
-  }, { heartbeat: config.websocketHeartbeatMs });
+  });
+
+  if (websocketPingTimer) {
+    clearInterval(websocketPingTimer);
+  }
+
+  websocketPingTimer = setInterval(async () => {
+    if (!websocket || shuttingDown) {
+      return;
+    }
+
+    try {
+      await websocket.send('ping');
+    } catch (err) {
+      console.error('eWeLink websocket keepalive ping failed:', err && err.message ? err.message : err);
+    }
+  }, config.websocketHeartbeatMs);
 
   websocket.onOpen.addListener(() => {
     console.log('eWeLink websocket opened and listening for updates');
   });
 
   websocket.onClose.addListener((event) => {
+    if (websocketPingTimer) {
+      clearInterval(websocketPingTimer);
+      websocketPingTimer = undefined;
+    }
+
     console.error('eWeLink websocket closed:', event && event.reason ? event.reason : 'no reason provided');
     if (!shuttingDown && config.exitOnWsClose) {
       process.exit(1);
@@ -164,6 +192,11 @@ async function shutdown(signal) {
     } catch (err) {
       console.error('Failed to close websocket cleanly:', err.message || err);
     }
+  }
+
+  if (websocketPingTimer) {
+    clearInterval(websocketPingTimer);
+    websocketPingTimer = undefined;
   }
 
   mqttClient.publish(bridgeStatusTopic, 'offline', { qos: 1, retain: true }, () => {
