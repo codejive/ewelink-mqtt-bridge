@@ -62,6 +62,7 @@ if (![0, 1, 2].includes(config.mqttQos)) {
 
 let websocket;
 let shuttingDown = false;
+let exitCode = 0;
 
 const bridgeStatusTopic = `${config.topicPrefix}/bridge/status`;
 
@@ -79,7 +80,11 @@ const mqttClient = mqtt.connect(config.mqttUrl, {
 
 mqttClient.on('connect', () => {
   console.log(`Connected to MQTT broker: ${config.mqttUrl}`);
-  mqttClient.publish(bridgeStatusTopic, 'online', { qos: 1, retain: true });
+  mqttClient.publish(bridgeStatusTopic, 'online', { qos: 1, retain: true }, (err) => {
+    if (err) {
+      console.error('Failed to publish bridge online status:', err.message || err);
+    }
+  });
 });
 
 mqttClient.on('reconnect', () => {
@@ -219,7 +224,7 @@ async function startBridge() {
     () => {
       console.error('eWeLink websocket closed');
       if (!shuttingDown && config.exitOnWsClose) {
-        process.exit(1);
+        shutdown('WEBSOCKET_CLOSED', 1);
       }
     },
     (event) => {
@@ -244,11 +249,12 @@ async function startBridge() {
   console.log('Bridge is running. Waiting for device updates...');
 }
 
-async function shutdown(signal) {
+async function shutdown(signal, requestedExitCode = 0) {
   if (shuttingDown) {
     return;
   }
   shuttingDown = true;
+  exitCode = requestedExitCode;
 
   console.log(`Received ${signal}, shutting down...`);
 
@@ -264,30 +270,49 @@ async function shutdown(signal) {
     }
   }
 
-  const shutdownTimeout = setTimeout(() => {
-    mqttClient.end(true, () => process.exit(0));
-  }, 1500);
+  const finish = (force) => {
+    mqttClient.end(force, () => process.exit(exitCode));
+  };
 
-  mqttClient.publish(bridgeStatusTopic, 'offline', { qos: 1, retain: true }, () => {
+  const shutdownTimeout = setTimeout(() => {
+    console.error('Timed out publishing offline status, forcing MQTT disconnect.');
+    finish(true);
+  }, 5000);
+
+  if (!mqttClient.connected) {
+    console.error('MQTT client is not connected during shutdown; forcing disconnect.');
     clearTimeout(shutdownTimeout);
-    mqttClient.end(false, () => process.exit(0));
+    finish(true);
+    return;
+  }
+
+  mqttClient.publish(bridgeStatusTopic, 'offline', { qos: 1, retain: true }, (err) => {
+    clearTimeout(shutdownTimeout);
+
+    if (err) {
+      console.error('Failed to publish bridge offline status:', err.message || err);
+      finish(true);
+      return;
+    }
+
+    finish(false);
   });
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT', 0));
+process.on('SIGTERM', () => shutdown('SIGTERM', 0));
 
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason);
-  process.exit(1);
+  shutdown('UNHANDLED_REJECTION', 1);
 });
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
-  process.exit(1);
+  shutdown('UNCAUGHT_EXCEPTION', 1);
 });
 
 startBridge().catch((err) => {
   console.error('Failed to start bridge:', err.message || err);
-  process.exit(1);
+  shutdown('STARTUP_FAILURE', 1);
 });
