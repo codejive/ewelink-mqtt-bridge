@@ -27,6 +27,8 @@ Examples:
 
 Topic prefix is configurable via `TOPIC_PREFIX`.
 
+The bridge publishes `ewelink/bridge/status=online` after connecting to the MQTT broker, and publishes `offline` during shutdown before closing MQTT cleanly. The MQTT last-will message is also set to `offline` so the status still flips if the process dies unexpectedly.
+
 ## Environment Variables
 
 The bridge is configured only through environment variables.
@@ -44,11 +46,12 @@ The bridge is configured only through environment variables.
 | `MQTT_PASS` | No | empty | Password for MQTT authentication. |
 | `TOPIC_PREFIX` | No | `ewelink` | Prefix used for all published topics. |
 | `PUBLISH_RAW_STATE` | No | `true` | If `true`, publishes full update JSON to `<prefix>/<deviceId>/state/raw`. |
+| `VERBOSE` | No | `false` | If `true`, logs every websocket message received from eWeLink, including non-update packets. |
 | `MQTT_RETAIN` | No | `true` | If `true`, publishes state messages with retain flag enabled. |
 | `MQTT_QOS` | No | `1` | MQTT QoS level for published messages. Allowed: `0`, `1`, `2`. |
 | `EXIT_ON_WEBSOCKET_CLOSE` | No | `true` | If `true`, process exits when eWeLink websocket closes (recommended in containers with restart policy). |
 
-Boolean variables (`PUBLISH_RAW_STATE`, `MQTT_RETAIN`, `EXIT_ON_WEBSOCKET_CLOSE`) accept: `true/false`, `1/0`, `yes/no`, `on/off`.
+Boolean variables (`PUBLISH_RAW_STATE`, `VERBOSE`, `MQTT_RETAIN`, `EXIT_ON_WEBSOCKET_CLOSE`) accept: `true/false`, `1/0`, `yes/no`, `on/off`.
 
 ## Getting App Credentials
 
@@ -157,6 +160,7 @@ Publish behavior:
 
 - If websocket connectivity drops, the bridge can exit and rely on container restart policy.
 - MQTT retained messages are convenient for Home Assistant and similar consumers, but can be disabled with `MQTT_RETAIN=false`.
+- The bridge manages `ewelink/bridge/status` itself: `online` on MQTT connect, `offline` on shutdown, and `offline` via MQTT last-will if the process stops unexpectedly.
 - If your broker requires TLS, use an `mqtts://` URL and ensure trust/cert settings are provided by your runtime environment.
 
 ## License

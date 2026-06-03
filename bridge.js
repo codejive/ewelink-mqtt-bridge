@@ -39,6 +39,7 @@ const config = {
   mqttPass: getEnv('MQTT_PASS'),
   topicPrefix: getEnv('TOPIC_PREFIX', 'ewelink'),
   publishRawState: getBooleanEnv('PUBLISH_RAW_STATE', true),
+  verbose: getBooleanEnv('VERBOSE', false),
   mqttRetain: getBooleanEnv('MQTT_RETAIN', true),
   mqttQos: Number(getEnv('MQTT_QOS', '1')),
   exitOnWsClose: getBooleanEnv('EXIT_ON_WEBSOCKET_CLOSE', true)
@@ -105,12 +106,15 @@ function publishMqtt(topic, payload) {
   });
 }
 
-function parseWebsocketPayload(message) {
+function getWebsocketRawMessage(message) {
   if (!message || typeof message.data === 'undefined' || message.data === null) {
     return null;
   }
 
-  const raw = Buffer.isBuffer(message.data) ? message.data.toString('utf8') : String(message.data);
+  return Buffer.isBuffer(message.data) ? message.data.toString('utf8') : String(message.data);
+}
+
+function parseWebsocketPayload(raw) {
   if (!raw || raw[0] !== '{') {
     return null;
   }
@@ -222,7 +226,13 @@ async function startBridge() {
       console.error('eWeLink websocket error:', event && event.message ? event.message : event);
     },
     async (_ws, message) => {
-      const action = parseWebsocketPayload(message);
+      const rawMessage = getWebsocketRawMessage(message);
+
+      if (config.verbose && rawMessage !== null) {
+        console.log('eWeLink websocket message:', rawMessage);
+      }
+
+      const action = parseWebsocketPayload(rawMessage);
       if (!action) {
         return;
       }
@@ -254,11 +264,14 @@ async function shutdown(signal) {
     }
   }
 
-  mqttClient.publish(bridgeStatusTopic, 'offline', { qos: 1, retain: true }, () => {
+  const shutdownTimeout = setTimeout(() => {
     mqttClient.end(true, () => process.exit(0));
-  });
+  }, 1500);
 
-  setTimeout(() => process.exit(0), 1500);
+  mqttClient.publish(bridgeStatusTopic, 'offline', { qos: 1, retain: true }, () => {
+    clearTimeout(shutdownTimeout);
+    mqttClient.end(false, () => process.exit(0));
+  });
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
