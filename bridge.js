@@ -134,6 +134,7 @@ function parseWebsocketPayload(raw) {
 
   // Handshake packet includes config but no device state.
   if (payload && payload.config) {
+    console.log(`eWeLink websocket config received: ${raw}`);
     return null;
   }
 
