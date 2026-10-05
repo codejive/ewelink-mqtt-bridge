@@ -34,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ secrets.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}
+          images: ${{ vars.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=tag
 
