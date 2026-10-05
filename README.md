@@ -74,7 +74,18 @@ This bridge requires your own eWeLink app credentials:
 
 If you're unable to obtain credentials, check the [eWeLink API Next documentation](https://www.npmjs.com/package/ewelink-api-next) or the [eWeLink community forums](https://www.ewelink.cc/).
 
-## Quick Start (Node.js)
+## Usage
+
+Copy `.env.example` to `.env`, fill in your credentials, and set `MQTT_URL` to a broker address reachable from the container (not `127.0.0.1`). Replace `<version>` below with the exact tag of a [published release](https://github.com/codejive/ewelink-mqtt-bridge/releases), including the `v` prefix. Normally, use the latest release:
+
+```sh
+docker run -d --name ewelink-mqtt-bridge --restart unless-stopped \
+  --env-file .env codejive/ewelink-mqtt-bridge:<version>
+```
+
+## Developing
+
+### Quick Start (Node.js)
 
 1. Install dependencies:
 
@@ -95,7 +106,7 @@ MQTT_URL="mqtt://127.0.0.1:1883" \
 node bridge.js
 ```
 
-## Docker
+### Docker
 
 Build image:
 
@@ -123,7 +134,7 @@ docker run -d \
 
 Use host networking only if your platform/setup requires it.
 
-## Docker Compose
+### Docker Compose
 
 1. Copy `.env.example` to `.env` and fill in your values.
 2. Update image in `docker-compose.yml` to your published image (or build locally and point to that tag).
@@ -132,31 +143,6 @@ Use host networking only if your platform/setup requires it.
 ```bash
 docker compose up -d
 ```
-
-## Publish to Docker Hub (Manual)
-
-```bash
-docker login
-docker tag ewelink-mqtt-bridge:local <namespace>/ewelink-mqtt-bridge:latest
-docker push <namespace>/ewelink-mqtt-bridge:latest
-```
-
-`<namespace>` can be a personal Docker Hub username or an organization name.
-
-## Publish via GitHub Actions
-
-Workflow: `.github/workflows/docker-publish.yml`
-
-Required repository secrets:
-
-- `DOCKERHUB_USERNAME`: Docker account used for login.
-- `DOCKERHUB_TOKEN`: Docker access token.
-- `DOCKERHUB_NAMESPACE`: Docker Hub namespace to publish to (user or organization).
-
-Publish behavior:
-
-- Push to default branch publishes `latest`.
-- Push tag `v*.*.*` publishes version tags.
 
 ## Operational Notes
 
