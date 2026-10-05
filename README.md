@@ -1,8 +1,10 @@
 # eWeLink to MQTT Bridge
 
-`ewelink-mqtt-bridge` connects to the eWeLink cloud websocket and republishes device updates to any MQTT broker.
+`ewelink-mqtt-bridge` connects to the eWeLink cloud websocket and republishes device updates to any [MQTT](https://mqtt.org/) broker.
 
 This is useful when your eWeLink devices can't connect directly to your MQTT broker. For example because your broker is on a public server and uses SSL, which the eWeLink devices don't support.
+
+Looking for the NATS version of this bridge? Check out [ewelink-nats-bridge](https://github.com/codejive/ewelink-nats-bridge).
 
 ## How It Works
 
@@ -14,8 +16,8 @@ This is useful when your eWeLink devices can't connect directly to your MQTT bro
 
 Default topic layout:
 
-- `ewelink/<deviceId>/state/raw`
 - `ewelink/<deviceId>/state/<key>`
+- `ewelink/<deviceId>/state/raw`
 - `ewelink/bridge/status`
 
 Examples:
